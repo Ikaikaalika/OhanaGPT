@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GEDCOM Fan Chart</title>
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+    <style>
+        .fan-chart {
+            display: block;
+            margin: auto;
+        }
+        .person {
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+            fill: black;
+        }
+    </style>
+</head>
+<body>
+    <h1>Fan Chart from GEDCOM</h1>
+    <svg id="fanChart" width="800" height="800" class="fan-chart"></svg>
+
+    <script>
+        // Function to draw the fan chart
+        function drawFanChart(data) {
+            const width = 800;
+            const height = 800;
+            const radius = Math.min(width, height) / 2;
+
+            const svg = d3.select("#fanChart")
+                .attr("viewBox", [-width / 2, -height / 2, width, height]);
+
+            const tree = d3.tree()
+                .size([2 * Math.PI, radius - 100])
+                .separation((a, b) => (a.parent == b.parent ? 1 : 2) / a.depth);
+
+            const root = d3.hierarchy(data);
+            const treeData = tree(root);
+
+            const link = svg.append("g")
+                .selectAll("path")
+                .data(treeData.links())
+                .enter().append("path")
+                .attr("d", d3.linkRadial()
+                    .angle(d => d.x)
+                    .radius(d => d.y))
+                .attr("fill", "none")
+                .attr("stroke", "#555")
+                .attr("stroke-width", 2);
+
+            const node = svg.append("g")
+                .selectAll("g")
+                .data(treeData.descendants())
+                .enter().append("g")
+                .attr("transform", d => `
+                    rotate(${d.x * 180 / Math.PI - 90}) 
+                    translate(${d.y},0)
+                `);
+
+            node.append("circle")
+                .attr("r", 5)
+                .attr("fill", "#999");
+
+            node.append("text")
+                .attr("dy", "0.31em")
+                .attr("x", d => d.x < Math.PI ? 6 : -6)
+                .attr("text-anchor", d => d.x < Math.PI ? "start" : "end")
+                .attr("transform", d => d.x >= Math.PI ? "rotate(180)" : null)
+                .text(d => d.data.name)
+                .attr("class", "person");
+        }
+
+        // Fetch the family data and draw the fan chart
+        fetch('/upload')  // You'll send data from the previous page here
+            .then(response => response.json())
+            .then(data => {
+                drawFanChart(data);
+            })
+            .catch(error => {
+                console.error('Error fetching family data:', error);
+            });
+    </script>
+</body>
+</html>

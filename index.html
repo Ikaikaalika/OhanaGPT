@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ʻOhanaGPT</title>
+    <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+    <!-- Title -->
+    <div class="title-container">
+        <h1>ʻOhanaGPT</h1>
+    </div>
+
+    <!-- Settings Menu -->
+    <div id="settingsMenu" style="display: none;">
+        <button id="deleteAccount">Delete Account</button>
+    </div>
+
+    <!-- Login Container -->
+    <div class="login-container">
+        <h2>Login</h2>
+        <form id="loginForm">
+            <label for="loginUsername">Username:</label>
+            <input type="text" id="loginUsername" name="username" required>
+            
+            <label for="loginPassword">Password:</label>
+            <input type="password" id="loginPassword" name="password" required>
+            
+            <button type="submit">Login</button>
+            <p>Don't have an account? <a href="#" id="showRegister">Register here</a></p>
+        </form>
+    </div>
+
+ <!-- Registration Container -->
+<div class="register-container" style="display: none;">
+    <h2>Register</h2>
+    <form id="registerForm">
+        <label for="registerUsername">Username:</label>
+        <input type="text" id="registerUsername" name="username" required>
+        <p id="usernameMessage" style="color: red;"></p> <!-- Message displayed if the username is taken -->
+
+        <label for="registerPassword">Password:</label>
+        <input type="password" id="registerPassword" name="password" required>
+        <p id="passwordStrength" style="color: red;"></p> <!-- Password strength indicator -->
+
+        <label for="confirmPassword">Confirm Password:</label>
+        <input type="password" id="confirmPassword" name="confirmPassword" required>
+        
+        <label for="privacyAgreement">
+            <input type="checkbox" id="privacyAgreement" name="privacyAgreement" required>
+            I agree to the <a href="/privacy" target="_blank">Privacy Policy</a>.
+        </label>
+        
+        <button type="submit">Register</button>
+        <p>Already have an account? <a href="#" id="showLogin">Login here</a></p>
+    </form>
+</div>
+
+    <!-- File Upload Container -->
+    <div class="upload-container" style="display: none;">
+        <h2>Upload a .GED File</h2>
+        <form id="uploadForm">
+            <input type="file" id="fileInput" name="file" accept=".ged" required>
+            <button type="submit">Upload</button>
+        </form>
+
+        <script>
+            document.getElementById('gedcomForm').addEventListener('submit', async function(event) {
+                event.preventDefault();
+                const formData = new FormData(this);
+            
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const familyData = await response.json();
+            
+                // Store the parsed data in local storage or redirect with data in query string (optional)
+                localStorage.setItem('familyData', JSON.stringify(familyData));
+            
+                // Redirect to the fan chart page
+                window.location.href = '/fan-chart';
+            });
+            </script>
+    </div>
+
+    <!-- Link to the JavaScript file -->
+    <script src="assets/js/script.js"></script>
+</body>
+</html>

@@ -1,0 +1,127 @@
+# ʻŌhanaGPT Configuration File
+
+# Data Processing
+data:
+  gedcom_dir: "data/gedcom_files"
+  processed_dir: "data/processed"
+  cache_dir: "data/cache"
+  
+  # Deduplication settings
+  deduplication:
+    name_threshold: 0.85
+    date_tolerance: 2  # years
+    ml_threshold: 0.9
+    use_ml_matching: true
+    
+  # Graph building settings
+  graph:
+    use_heterogeneous: true
+    max_generations: 5
+    include_spouse_edges: true
+    include_sibling_edges: true
+    include_temporal_features: true
+    node_feature_dim: 64
+    edge_feature_dim: 16
+
+# Model Configuration
+model:
+  # Model type: 'gnn' or 'transformer'
+  type: 'gnn'
+  
+  # GNN specific settings
+  gnn:
+    hidden_dim: 256
+    embedding_dim: 128
+    num_layers: 4
+    num_heads: 8
+    dropout: 0.2
+    use_edge_attr: true
+    
+  # Transformer specific settings
+  transformer:
+    d_model: 512
+    nhead: 8
+    num_encoder_layers: 6
+    num_decoder_layers: 6
+    dim_feedforward: 2048
+    dropout: 0.1
+    max_seq_length: 1000
+    
+  # Loss function weights
+  loss:
+    alpha: 1.0  # Parent prediction loss weight
+    beta: 0.5   # Generation constraint weight
+    gamma: 0.1  # Consistency loss weight
+
+# Training Configuration
+training:
+  # General settings
+  batch_size: 32
+  num_epochs: 100
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  grad_clip: 1.0
+  
+  # Scheduler settings
+  scheduler_patience: 10
+  early_stopping_patience: 20
+  
+  # Transformer specific
+  warmup_steps: 1000
+  total_steps: 10000
+  
+  # Logging
+  use_wandb: false
+  checkpoint_dir: "checkpoints"
+  log_interval: 100
+  
+  # Incremental learning
+  incremental:
+    replay_buffer_size: 1000
+    ewc_lambda: 0.1
+    distillation_weight: 0.1
+
+# Inference Configuration
+inference:
+  top_k: 10
+  confidence_threshold: 0.5
+  use_constraints: true
+  
+  # API settings
+  api:
+    host: "0.0.0.0"
+    port: 8000
+    max_upload_size: 100  # MB
+    
+# Hardware Configuration
+hardware:
+  # Choose 'pytorch' or 'mlx'
+  backend: 'pytorch'
+  
+  # PyTorch settings
+  pytorch:
+    device: 'cuda'  # 'cuda' or 'cpu'
+    num_workers: 4
+    pin_memory: true
+    
+  # MLX settings (Apple Silicon)
+  mlx:
+    compute_units: 'all'  # 'all', 'cpu', or 'gpu'
+
+# Evaluation Configuration
+evaluation:
+  metrics:
+    - exact_match_accuracy
+    - father_accuracy
+    - mother_accuracy
+    - top_1_accuracy
+    - top_5_accuracy
+    - top_10_accuracy
+  
+  # Report generation
+  generate_report: true
+  report_dir: "evaluation_reports"
+  
+  # Visualization
+  plot_results: true
+  plot_dir: "plots"

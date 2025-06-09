@@ -44,7 +44,7 @@
 
 1. Clone the repository:
 
-git clone https://github.com/yourusername/ohana-gpt.git
+git clone https://github.com/ikaikaalika/ohanagpt.git
 cd ohana-gpt
 
 Start with Docker Compose:

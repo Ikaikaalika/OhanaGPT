@@ -12,7 +12,7 @@ RUN npm install
 COPY . .
 
 # Build the application
-RUN npm run build
+RUN npm run build  
 
 # Install serve to run the built app
 RUN npm install -g serve

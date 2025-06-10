@@ -519,8 +519,201 @@ class GraphBuilder:
     
     def _check_isolated_nodes(self, data: Data) -> bool:
         """Check if graph has isolated nodes"""
+        if data.edge_index.shape[1] == 0:
+            # No edges means all nodes are isolated (if any exist)
+            return data.num_nodes > 0
+        
         edge_index = data.edge_index
-        connected_nodes = torch.unique(edge_index)
-        return len(connected_nodes) < data.num_nodesidx = family_to_idx[fam_id]
-                    ind_to_fam_edges.append([ind_idx, fam_idx])
-                    fam_
+        # Get all unique node indices that appear in edges
+        connected_nodes = torch.unique(torch.cat([edge_index[0], edge_index[1]]))
+        
+        # Check if the number of connected nodes is less than total nodes
+        return len(connected_nodes) < data.num_nodes
+    
+    def _build_temporal_edges(self, individuals: Dict[str, Individual]) -> torch.Tensor:
+        """Build edges between individuals who lived in the same time period"""
+        edges = []
+        ind_list = list(individuals.values())
+        
+        for i in range(len(ind_list)):
+            for j in range(i+1, len(ind_list)):
+                if self._are_contemporary(ind_list[i], ind_list[j]):
+                    if ind_list[i].id in self.node_to_idx and ind_list[j].id in self.node_to_idx:
+                        idx_i = self.node_to_idx[ind_list[i].id]
+                        idx_j = self.node_to_idx[ind_list[j].id]
+                        edges.append([idx_i, idx_j])
+                        edges.append([idx_j, idx_i])
+        
+        if edges:
+            return torch.tensor(edges, dtype=torch.long).t().contiguous()
+        else:
+            return torch.empty((2, 0), dtype=torch.long)
+    
+    def _are_contemporary(self, ind1: Individual, ind2: Individual, threshold: int = 50) -> bool:
+        """Check if two individuals lived in overlapping time periods"""
+        birth1 = self._extract_year(ind1.birth_date)
+        death1 = self._extract_year(ind1.death_date)
+        birth2 = self._extract_year(ind2.birth_date)
+        death2 = self._extract_year(ind2.death_date)
+        
+        if not birth1 or not birth2:
+            return False
+        
+        # Use 80 as default lifespan if death date missing
+        death1 = death1 or (birth1 + 80)
+        death2 = death2 or (birth2 + 80)
+        
+        # Check if lifespans overlap
+        return not (death1 < birth2 - threshold or death2 < birth1 - threshold)
+    
+    def _create_masks(self, 
+                     individuals: Dict[str, Individual], 
+                     families: Dict[str, Family]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Create train/val/test masks for missing parent prediction"""
+        n_nodes = len(individuals)
+        
+        # Identify individuals with known vs unknown parents
+        has_parents = torch.zeros(n_nodes, dtype=torch.bool)
+        missing_parents = torch.zeros(n_nodes, dtype=torch.bool)
+        
+        for ind_id, ind in individuals.items():
+            idx = self.node_to_idx[ind_id]
+            if ind.parent_family_ids:
+                # Check if parents are actually known
+                has_known_parents = False
+                for fam_id in ind.parent_family_ids:
+                    if fam_id in families:
+                        fam = families[fam_id]
+                        if fam.husband_id or fam.wife_id:
+                            has_known_parents = True
+                            break
+                has_parents[idx] = has_known_parents
+            else:
+                missing_parents[idx] = True
+        
+        # Split into train/val/test
+        known_indices = torch.where(has_parents)[0]
+        unknown_indices = torch.where(missing_parents)[0]
+        
+        # Use 60/20/20 split for known parents
+        n_known = len(known_indices)
+        perm = torch.randperm(n_known)
+        
+        train_known = known_indices[perm[:int(0.6 * n_known)]]
+        val_known = known_indices[perm[int(0.6 * n_known):int(0.8 * n_known)]]
+        test_known = known_indices[perm[int(0.8 * n_known):]]
+        
+        # All unknown parents go to test set (these are what we want to predict)
+        train_mask = torch.zeros(n_nodes, dtype=torch.bool)
+        val_mask = torch.zeros(n_nodes, dtype=torch.bool)
+        test_mask = torch.zeros(n_nodes, dtype=torch.bool)
+        
+        train_mask[train_known] = True
+        val_mask[val_known] = True
+        test_mask[test_known] = True
+        test_mask[unknown_indices] = True
+        
+        return train_mask, val_mask, test_mask
+    
+    def _create_parent_labels(self,
+                            individuals: Dict[str, Individual],
+                            families: Dict[str, Family]) -> torch.Tensor:
+        """Create labels for parent prediction task"""
+        n_nodes = len(individuals)
+        # Labels will be (father_idx, mother_idx), using -1 for unknown
+        labels = torch.full((n_nodes, 2), -1, dtype=torch.long)
+        
+        for ind_id, ind in individuals.items():
+            idx = self.node_to_idx[ind_id]
+            
+            for fam_id in ind.parent_family_ids:
+                if fam_id in families:
+                    fam = families[fam_id]
+                    if fam.husband_id and fam.husband_id in self.node_to_idx:
+                        labels[idx, 0] = self.node_to_idx[fam.husband_id]
+                    if fam.wife_id and fam.wife_id in self.node_to_idx:
+                        labels[idx, 1] = self.node_to_idx[fam.wife_id]
+        
+        return labels
+    
+    def _extract_year(self, date_str: Optional[str]) -> Optional[int]:
+        """Extract year from various date formats"""
+        if not date_str:
+            return None
+            
+        # Try to find 4-digit year
+        import re
+        year_match = re.search(r'\b(1[0-9]{3}|20[0-9]{2})\b', date_str)
+        if year_match:
+            return int(year_match.group(1))
+            
+        # Try to find 3-digit year (before 1000)
+        year_match = re.search(r'\b([1-9][0-9]{2})\b', date_str)
+        if year_match:
+            return int(year_match.group(1))
+            
+        return None
+    
+    def _encode_location(self, location: Optional[str]) -> List[float]:
+        """Encode location string into feature vector"""
+        if not location:
+            return [0, 0, 0, 0]
+        
+        # Simple encoding: country, state/region, city, has_location
+        features = [0, 0, 0, 1]
+        
+        # Extract location components (simplified)
+        parts = location.split(',')
+        if len(parts) >= 3:
+            features[0] = 1  # Has country
+            features[1] = 1  # Has state/region
+            features[2] = 1  # Has city
+        elif len(parts) == 2:
+            features[1] = 1  # Has state/region
+            features[2] = 1  # Has city
+        elif len(parts) == 1:
+            features[2] = 1  # Has city
+            
+        return features
+    
+    def _estimate_generation(self, 
+                           individual: Individual, 
+                           all_individuals: Dict[str, Individual]) -> float:
+        """Estimate generation number based on birth year and relationships"""
+        birth_year = self._extract_year(individual.birth_date)
+        if not birth_year:
+            return 0
+        
+        # Assume ~25 years per generation
+        # Normalize to 1900 as generation 0
+        generation = (birth_year - 1900) / 25.0
+        
+        return generation
+    
+    def add_graph_statistics(self, graph_data) -> Dict:
+        """Add statistics about the graph"""
+        if isinstance(graph_data, Data):
+            stats = {
+                'num_nodes': graph_data.num_nodes,
+                'num_edges': graph_data.edge_index.shape[1],
+                'num_features': graph_data.x.shape[1],
+                'avg_degree': graph_data.edge_index.shape[1] / graph_data.num_nodes,
+                'has_isolated_nodes': self._check_isolated_nodes(graph_data)
+            }
+        else:  # HeteroData
+            stats = {
+                'num_individual_nodes': graph_data['individual'].num_nodes,
+                'num_family_nodes': graph_data['family'].num_nodes,
+                'num_parent_child_edges': graph_data['individual', 'parent_of', 'individual'].edge_index.shape[1] if hasattr(graph_data['individual', 'parent_of', 'individual'], 'edge_index') else 0,
+                'num_spouse_edges': graph_data['individual', 'spouse_of', 'individual'].edge_index.shape[1] if hasattr(graph_data['individual', 'spouse_of', 'individual'], 'edge_index') else 0
+            }
+        
+        return stats
+    
+    # def _check_isolated_nodes(self, data: Data) -> bool:
+    #     """Check if graph has isolated nodes"""
+    #     edge_index = data.edge_index
+    #     connected_nodes = torch.unique(edge_index)
+    #     return len(connected_nodes) < data.num_nodesidx = family_to_idx[fam_id]
+    #                 ind_to_fam_edges.append([ind_idx, fam_idx])
+    #                 fam_
